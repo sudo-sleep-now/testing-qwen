@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Gallery Hub</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            background: linear-gradient(135deg, #0c0c1e 0%, #1a1a3e 50%, #0c0c1e 100%);
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        .info-panel {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            text-align: center;
+            color: #fff;
+            text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+
+        .info-panel h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #00ffff, #ff00ff, #00ffff);
+            background-size: 200% auto;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: gradient-shift 3s ease infinite;
+        }
+
+        @keyframes gradient-shift {
+            0%, 100% { background-position: 0% center; }
+            50% { background-position: 200% center; }
+        }
+
+        .info-panel p {
+            font-size: 1.1rem;
+            opacity: 0.8;
+        }
+
+        .instructions {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            color: #aaa;
+            font-size: 0.9rem;
+            text-align: center;
+        }
+
+        .page-card {
+            position: absolute;
+            padding: 15px 25px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            pointer-events: none;
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(0.8);
+        }
+
+        .page-card.visible {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+        }
+
+        .page-card:hover {
+            transform: translate(-50%, -50%) scale(1.1);
+            box-shadow: 0 0 30px currentColor;
+        }
+
+        .page-card a {
+            color: #fff;
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 1rem;
+            pointer-events: auto;
+        }
+
+        .glow-orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(40px);
+            opacity: 0.6;
+            animation: pulse 4s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.6; }
+            50% { transform: scale(1.2); opacity: 0.8; }
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div class="info-panel">
+        <h1>✨ 3D Experience Gallery ✨</h1>
+        <p>Explore our immersive web experiences</p>
+    </div>
+
+    <div class="instructions">
+        🖱️ Drag to rotate • Scroll to zoom • Click on cards to enter
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Page data with unique colors and positions
+        const pages = [
+            { 
+                name: 'Solar System', 
+                url: '01-solar-system/index.html', 
+                color: 0xffaa00,
+                description: 'Orbit through the cosmos'
+            },
+            { 
+                name: 'Cyberpunk City', 
+                url: '02-cyberpunk-city/index.html', 
+                color: 0xff00ff,
+                description: 'Neon-lit metropolis'
+            },
+            { 
+                name: 'Sci-Fi Crystal', 
+                url: '03-sci-fi-crystal/index.html', 
+                color: 0x00ffff,
+                description: 'Crystalline dimensions'
+            },
+            { 
+                name: 'Particle Ocean', 
+                url: '04-particle-ocean/index.html', 
+                color: 0x0088ff,
+                description: 'Digital waves'
+            },
+            { 
+                name: 'Product Pedestal', 
+                url: '05-product-pedestal/index.html', 
+                color: 0x00ff88,
+                description: 'Showcase elegance'
+            }
+        ];
+
+        // Scene setup
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(renderer.domElement);
+
+        // Camera position
+        camera.position.z = 15;
+
+        // Mouse tracking for rotation
+        let mouseX = 0;
+        let mouseY = 0;
+        let targetRotationX = 0;
+        let targetRotationY = 0;
+
+        // Create central structure
+        const geometryGroup = new THREE.Group();
+        scene.add(geometryGroup);
+
+        // Create floating orbs for each page
+        const orbs = [];
+        const cards = [];
+
+        pages.forEach((page, index) => {
+            const angle = (index / pages.length) * Math.PI * 2;
+            const radius = 8;
+            
+            // Create orb geometry
+            const orbGeometry = new THREE.IcosahedronGeometry(1.2, 1);
+            const orbMaterial = new THREE.MeshPhongMaterial({
+                color: page.color,
+                emissive: page.color,
+                emissiveIntensity: 0.5,
+                shininess: 100,
+                transparent: true,
+                opacity: 0.9
+            });
+            
+            const orb = new THREE.Mesh(orbGeometry, orbMaterial);
+            orb.position.x = Math.cos(angle) * radius;
+            orb.position.y = Math.sin(angle) * radius * 0.5;
+            orb.position.z = Math.sin(angle) * 3;
+            
+            // Add wireframe overlay
+            const wireframeGeometry = new THREE.WireframeGeometry(orbGeometry);
+            const wireframeMaterial = new THREE.LineBasicMaterial({ 
+                color: 0xffffff, 
+                transparent: true, 
+                opacity: 0.3 
+            });
+            const wireframe = new THREE.LineSegments(wireframeGeometry, wireframeMaterial);
+            orb.add(wireframe);
+
+            // Add glow effect
+            const glowGeometry = new THREE.SphereGeometry(1.5, 16, 16);
+            const glowMaterial = new THREE.MeshBasicMaterial({
+                color: page.color,
+                transparent: true,
+                opacity: 0.3,
+                side: THREE.BackSide
+            });
+            const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+            orb.add(glow);
+
+            orb.userData = { page, baseY: orb.position.y, phase: index };
+            scene.add(orb);
+            orbs.push(orb);
+
+            // Create HTML card for each page
+            const card = document.createElement('div');
+            card.className = 'page-card';
+            card.style.borderColor = `#${page.color.toString(16).padStart(6, '0')}`;
+            card.style.color = `#${page.color.toString(16).padStart(6, '0')}`;
+            card.innerHTML = `<a href="${page.url}">${page.name}<br><small style="opacity:0.7;font-size:0.8em">${page.description}</small></a>`;
+            container.appendChild(card);
+            cards.push(card);
+        });
+
+        // Create connecting rings
+        const ringGeometry = new THREE.TorusGeometry(6, 0.05, 16, 100);
+        const ringMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0x4444aa, 
+            transparent: true, 
+            opacity: 0.5 
+        });
+        const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+        ring.rotation.x = Math.PI / 2;
+        scene.add(ring);
+
+        const ring2 = ringGeometry.clone();
+        const ring2Mesh = new THREE.Mesh(ringGeometry, ringMaterial);
+        ring2Mesh.rotation.x = Math.PI / 2.5;
+        scene.add(ring2Mesh);
+
+        // Add particles
+        const particlesGeometry = new THREE.BufferGeometry();
+        const particleCount = 500;
+        const positions = new Float32Array(particleCount * 3);
+        
+        for (let i = 0; i < particleCount * 3; i += 3) {
+            positions[i] = (Math.random() - 0.5) * 50;
+            positions[i + 1] = (Math.random() - 0.5) * 50;
+            positions[i + 2] = (Math.random() - 0.5) * 50;
+        }
+        
+        particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const particlesMaterial = new THREE.PointsMaterial({
+            color: 0xffffff,
+            size: 0.1,
+            transparent: true,
+            opacity: 0.8
+        });
+        const particles = new THREE.Points(particlesGeometry, particlesMaterial);
+        scene.add(particles);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+
+        const pointLight1 = new THREE.PointLight(0xffffff, 1, 100);
+        pointLight1.position.set(10, 10, 10);
+        scene.add(pointLight1);
+
+        const pointLight2 = new THREE.PointLight(0xffffff, 0.5, 100);
+        pointLight2.position.set(-10, -10, -10);
+        scene.add(pointLight2);
+
+        // Mouse event listeners
+        document.addEventListener('mousemove', (event) => {
+            mouseX = (event.clientX - window.innerWidth / 2) * 0.001;
+            mouseY = (event.clientY - window.innerHeight / 2) * 0.001;
+        });
+
+        // Zoom with scroll
+        document.addEventListener('wheel', (event) => {
+            camera.position.z += event.deltaY * 0.01;
+            camera.position.z = Math.max(8, Math.min(25, camera.position.z));
+        });
+
+        // Animation loop
+        let time = 0;
+        function animate() {
+            requestAnimationFrame(animate);
+            time += 0.01;
+
+            // Smooth rotation based on mouse
+            targetRotationX += (mouseY - targetRotationX) * 0.05;
+            targetRotationY += (mouseX - targetRotationY) * 0.05;
+
+            geometryGroup.rotation.y += 0.002;
+            geometryGroup.rotation.x = targetRotationX * 0.5;
+            
+            ring.rotation.z -= 0.001;
+            ring2Mesh.rotation.z += 0.0015;
+            particles.rotation.y += 0.0005;
+
+            // Animate orbs
+            orbs.forEach((orb, index) => {
+                orb.rotation.x += 0.01;
+                orb.rotation.y += 0.015;
+                orb.position.y = orb.userData.baseY + Math.sin(time + orb.userData.phase) * 0.5;
+                
+                // Pulse effect
+                const scale = 1 + Math.sin(time * 2 + orb.userData.phase) * 0.1;
+                orb.scale.set(scale, scale, scale);
+            });
+
+            // Update card positions
+            orbs.forEach((orb, index) => {
+                const vector = orb.position.clone();
+                vector.project(camera);
+                
+                const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+                const y = (-vector.y * 0.5 + 0.5) * window.innerHeight;
+                
+                // Only show cards facing camera
+                const distance = Math.abs(vector.z);
+                if (distance < 0.9) {
+                    cards[index].style.left = `${x}px`;
+                    cards[index].style.top = `${y}px`;
+                    cards[index].classList.add('visible');
+                    cards[index].style.pointerEvents = 'auto';
+                } else {
+                    cards[index].classList.remove('visible');
+                    cards[index].style.pointerEvents = 'none';
+                }
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // Handle resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Add some background glow orbs
+        for (let i = 0; i < 5; i++) {
+            const glowOrb = document.createElement('div');
+            glowOrb.className = 'glow-orb';
+            glowOrb.style.width = `${Math.random() * 200 + 100}px`;
+            glowOrb.style.height = glowOrb.style.width;
+            glowOrb.style.left = `${Math.random() * 100}%`;
+            glowOrb.style.top = `${Math.random() * 100}%`;
+            glowOrb.style.background = `radial-gradient(circle, ${pages[i].color.toString(16)} 0%, transparent 70%)`;
+            glowOrb.style.animationDelay = `${i * 0.5}s`;
+            container.appendChild(glowOrb);
+        }
+    </script>
+</body>
+</html>

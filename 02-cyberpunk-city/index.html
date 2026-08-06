@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyberpunk City Grid</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x020210);
+        scene.fog = new THREE.FogExp2(0x020210, 0.015);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 500);
+        camera.position.set(30, 25, 30);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.03;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 0.5;
+        controls.maxPolarAngle = Math.PI / 2 - 0.1;
+
+        // Procedural neon window texture
+        function createNeonWindowTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+
+            // Dark building base
+            ctx.fillStyle = '#0a0a15';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Neon windows - cyan and magenta
+            const colors = ['#00ffff', '#ff00ff', '#0088ff', '#ff0088'];
+            
+            for (let floor = 0; floor < 16; floor++) {
+                const y = floor * 32;
+                for (let window = 0; window < 4; window++) {
+                    if (Math.random() > 0.3) {
+                        const x = window * 64 + 8;
+                        const color = colors[Math.floor(Math.random() * colors.length)];
+                        
+                        // Window glow
+                        ctx.fillStyle = color;
+                        ctx.shadowColor = color;
+                        ctx.shadowBlur = 10;
+                        ctx.fillRect(x, y + 4, 48, 20);
+                        ctx.shadowBlur = 0;
+                    }
+                }
+            }
+
+            // Vertical neon strips
+            ctx.strokeStyle = '#00ffff';
+            ctx.lineWidth = 2;
+            ctx.shadowColor = '#00ffff';
+            ctx.shadowBlur = 5;
+            ctx.beginPath();
+            ctx.moveTo(10, 0);
+            ctx.lineTo(10, canvas.height);
+            ctx.moveTo(canvas.width - 10, 0);
+            ctx.lineTo(canvas.width - 10, canvas.height);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            return texture;
+        }
+
+        // Star particles
+        const starGeometry = new THREE.BufferGeometry();
+        const starPositions = [];
+        for (let i = 0; i < 2000; i++) {
+            starPositions.push(
+                (Math.random() - 0.5) * 400,
+                Math.random() * 100 + 50,
+                (Math.random() - 0.5) * 400
+            );
+        }
+        starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
+        const starMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.5, transparent: true, opacity: 0.8 });
+        const stars = new THREE.Points(starGeometry, starMaterial);
+        scene.add(stars);
+
+        // Ground plane with grid
+        const groundGeometry = new THREE.PlaneGeometry(200, 200);
+        const groundMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x050510,
+            roughness: 0.9,
+            metalness: 0.5
+        });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // Glowing grid helper
+        const gridHelper = new THREE.GridHelper(200, 50, 0xff00ff, 0x00ffff);
+        gridHelper.position.y = 0.1;
+        scene.add(gridHelper);
+
+        // Buildings
+        const buildings = [];
+        const buildingMaterial = new THREE.MeshStandardMaterial({
+            color: 0x1a1a2e,
+            roughness: 0.3,
+            metalness: 0.8
+        });
+
+        for (let x = -4; x <= 4; x++) {
+            for (let z = -4; z <= 4; z++) {
+                if (x === 0 && z === 0) continue; // Skip center
+
+                const height = Math.random() * 15 + 5;
+                const width = 3 + Math.random() * 2;
+                
+                const buildingGeometry = new THREE.BoxGeometry(width, height, width);
+                const building = new THREE.Mesh(buildingGeometry, buildingMaterial);
+                building.position.set(x * 8, height / 2, z * 8);
+                building.castShadow = true;
+                building.receiveShadow = true;
+                scene.add(building);
+
+                // Add neon windows on some buildings
+                if (Math.random() > 0.5) {
+                    const windowTexture = createNeonWindowTexture();
+                    const windowMaterial = new THREE.MeshBasicMaterial({ 
+                        map: windowTexture,
+                        transparent: true
+                    });
+                    
+                    const windowGeo = new THREE.PlaneGeometry(width + 0.1, height);
+                    const windows = new THREE.Mesh(windowGeo, windowMaterial);
+                    windows.position.copy(building.position);
+                    windows.position.y = height / 2;
+                    windows.position.z += width / 2 + 0.1;
+                    scene.add(windows);
+
+                    const windowsBack = windows.clone();
+                    windowsBack.position.z -= (width + 0.2);
+                    windowsBack.rotation.y = Math.PI;
+                    scene.add(windowsBack);
+                }
+            }
+        }
+
+        // Traffic particles
+        const trafficCount = 100;
+        const trafficGeometry = new THREE.BufferGeometry();
+        const trafficPositions = new Float32Array(trafficCount * 3);
+        const trafficColors = new Float32Array(trafficCount * 3);
+        const trafficDirections = [];
+        const trafficSpeeds = [];
+
+        for (let i = 0; i < trafficCount; i++) {
+            const axis = Math.random() > 0.5 ? 'x' : 'z';
+            const direction = Math.random() > 0.5 ? 1 : -1;
+            const lane = Math.floor(Math.random() * 10) - 5;
+            const pos = (Math.random() - 0.5) * 80;
+
+            trafficDirections.push({ axis, direction, lane });
+            trafficSpeeds.push(0.2 + Math.random() * 0.3);
+
+            if (axis === 'x') {
+                trafficPositions[i * 3] = pos;
+                trafficPositions[i * 3 + 1] = 0.5;
+                trafficPositions[i * 3 + 2] = lane * 8;
+            } else {
+                trafficPositions[i * 3] = lane * 8;
+                trafficPositions[i * 3 + 1] = 0.5;
+                trafficPositions[i * 3 + 2] = pos;
+            }
+
+            const color = direction > 0 ? new THREE.Color(0xff0000) : new THREE.Color(0xffff00);
+            trafficColors[i * 3] = color.r;
+            trafficColors[i * 3 + 1] = color.g;
+            trafficColors[i * 3 + 2] = color.b;
+        }
+
+        trafficGeometry.setAttribute('position', new THREE.BufferAttribute(trafficPositions, 3));
+        trafficGeometry.setAttribute('color', new THREE.BufferAttribute(trafficColors, 3));
+        const trafficMaterial = new THREE.PointsMaterial({ 
+            size: 0.8, 
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.9
+        });
+        const traffic = new THREE.Points(trafficGeometry, trafficMaterial);
+        scene.add(traffic);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x222244, 0.5);
+        scene.add(ambientLight);
+
+        // Cyan and magenta point lights throughout the city
+        const lightPositions = [
+            { pos: [15, 10, 15], color: 0x00ffff },
+            { pos: [-15, 10, -15], color: 0xff00ff },
+            { pos: [15, 10, -15], color: 0x0088ff },
+            { pos: [-15, 10, 15], color: 0xff0088 }
+        ];
+
+        lightPositions.forEach(lightData => {
+            const pointLight = new THREE.PointLight(lightData.color, 2, 50);
+            pointLight.position.set(...lightData.pos);
+            scene.add(pointLight);
+        });
+
+        // Animation loop
+        let time = 0;
+        function animate() {
+            requestAnimationFrame(animate);
+            time += 0.016;
+
+            // Update traffic
+            const positions = traffic.geometry.attributes.position.array;
+            for (let i = 0; i < trafficCount; i++) {
+                const dir = trafficDirections[i];
+                const speed = trafficSpeeds[i];
+                
+                if (dir.axis === 'x') {
+                    positions[i * 3] += dir.direction * speed;
+                    if (positions[i * 3] > 40) positions[i * 3] = -40;
+                    if (positions[i * 3] < -40) positions[i * 3] = 40;
+                } else {
+                    positions[i * 3 + 2] += dir.direction * speed;
+                    if (positions[i * 3 + 2] > 40) positions[i * 3 + 2] = -40;
+                    if (positions[i * 3 + 2] < -40) positions[i * 3 + 2] = 40;
+                }
+            }
+            traffic.geometry.attributes.position.needsUpdate = true;
+
+            // Subtle building flicker effect
+            buildings.forEach((building, i) => {
+                if (i % 3 === 0) {
+                    building.material.emissiveIntensity = Math.sin(time * 2 + i) * 0.1;
+                }
+            });
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // Handle resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

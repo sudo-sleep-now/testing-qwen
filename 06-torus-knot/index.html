@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark" />
+<title>TORUS KNOT (3,4) — Field Observatory</title>
+<style>
+  :root{
+    --ink:#e8f0f2;
+    --muted:#7e98a1;
+    --amber:#ffb45e;
+    --amber-hi:#ffd9a0;
+    --aqua:#5fe0d0;
+    --line:rgba(150,190,200,.22);
+    --display:"Bahnschrift","Avenir Next Condensed","Arial Narrow","Helvetica Neue",sans-serif;
+    --mono:"Cascadia Code","SF Mono","JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    overflow:hidden;
+    font-family:var(--mono);
+    color:var(--ink);
+    user-select:none;-webkit-user-select:none;
+    background:
+      radial-gradient(120% 90% at 72% 12%, rgba(40,112,124,.30) 0%, rgba(40,112,124,0) 55%),
+      radial-gradient(80% 70% at 18% 88%, rgba(255,138,60,.08) 0%, rgba(255,138,60,0) 52%),
+      radial-gradient(150% 130% at 50% 50%, #0a1c28 0%, #050d14 62%, #02070a 100%);
+  }
+
+  #stage{position:fixed;inset:0}
+  #stage canvas{display:block;width:100%;height:100%;cursor:grab;touch-action:none}
+  body.grabbing #stage canvas{cursor:grabbing}
+
+  .scanlines,.vignette{position:fixed;inset:0;pointer-events:none}
+  .scanlines{z-index:2;opacity:.45;
+    background:repeating-linear-gradient(0deg, rgba(200,235,240,.022) 0 1px, transparent 1px 3px)}
+  .vignette{z-index:3;
+    background:radial-gradient(120% 100% at 50% 44%, transparent 55%, rgba(2,6,9,.6) 100%)}
+
+  /* ---------- HUD ---------- */
+  .hud{position:fixed;z-index:5;pointer-events:none;
+    opacity:0;transform:translateY(10px);
+    transition:opacity .9s ease,transform .9s ease}
+  body.ready .hud{opacity:1;transform:none}
+  .hud-tr{transition-delay:.12s}.hud-bl{transition-delay:.24s}.hud-br{transition-delay:.34s}
+
+  .hud-tl{top:clamp(18px,3vw,36px);left:clamp(18px,3vw,36px)}
+  .eyebrow{display:flex;align-items:center;gap:9px;
+    font-size:10.5px;letter-spacing:.34em;color:var(--muted)}
+  .eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--amber);
+    animation:beat 2.6s ease-in-out infinite}
+  @keyframes beat{0%,100%{opacity:1;box-shadow:0 0 10px var(--amber)}
+                  50%{opacity:.35;box-shadow:0 0 2px var(--amber)}}
+  h1{font-family:var(--display);font-weight:700;font-stretch:87.5%;
+    text-transform:uppercase;line-height:.86;letter-spacing:.015em;
+    font-size:clamp(2.5rem,7.4vw,5.4rem);margin-top:12px}
+  h1 .hollow{color:transparent;-webkit-text-stroke:1.5px var(--amber)}
+  @supports not (-webkit-text-stroke:1px #000){h1 .hollow{color:var(--amber)}}
+  .spec{margin-top:12px;max-width:42ch;
+    font-size:11px;letter-spacing:.14em;line-height:1.7;color:var(--muted)}
+  .spec b{color:var(--amber-hi);font-weight:400}
+
+  .hud-tr{top:clamp(18px,3vw,36px);right:clamp(18px,3vw,36px);text-align:right}
+  .legend-title{font-size:10px;letter-spacing:.3em;opacity:.85;margin-bottom:10px}
+  .legend{list-style:none;display:grid;gap:7px;
+    font-size:11px;letter-spacing:.12em;color:var(--muted)}
+  .legend li{display:flex;justify-content:flex-end;align-items:center;gap:9px}
+  .sw{width:8px;height:8px;border-radius:50%;flex:none}
+  .sw-a{background:var(--amber);box-shadow:0 0 9px rgba(255,164,78,.9)}
+  .sw-b{background:var(--aqua);box-shadow:0 0 9px rgba(95,224,208,.8)}
+  .sw-c{background:#ff7a2e;box-shadow:0 0 9px rgba(255,122,46,.8)}
+  .sw-d{background:#9db7c0;width:3px;height:3px;box-shadow:0 0 6px #9db7c0}
+  .credit{margin-top:14px;font-size:9.5px;letter-spacing:.24em;color:var(--muted);opacity:.65}
+
+  .hud-bl{left:clamp(18px,3vw,36px);bottom:clamp(18px,3vw,36px);
+    display:flex;gap:clamp(18px,3.4vw,34px)}
+  .tele{display:grid;gap:5px}
+  .lab{font-size:9.5px;letter-spacing:.32em;color:var(--muted)}
+  .val{font-size:15px;letter-spacing:.06em;font-variant-numeric:tabular-nums;min-width:4ch}
+  #fps{color:var(--aqua)} #fps.low{color:var(--amber)}
+
+  .hud-br{right:clamp(18px,3vw,36px);bottom:clamp(18px,3vw,36px);
+    display:grid;justify-items:end;gap:12px}
+  .btns{display:flex;gap:10px}
+  .chip{pointer-events:auto;font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;
+    display:inline-flex;align-items:center;gap:9px;
+    padding:10px 15px;color:var(--ink);cursor:pointer;
+    background:rgba(9,20,26,.6);border:1px solid var(--line);border-radius:2px;
+    transition:border-color .25s,color .25s,transform .15s,box-shadow .25s}
+  .chip:hover{border-color:var(--amber);color:var(--amber-hi);
+    transform:translateY(-1px);box-shadow:0 5px 20px rgba(255,164,78,.16)}
+  .chip:active{transform:translateY(0) scale(.97)}
+  .chip b{font-weight:400;color:var(--muted)}
+  .chip.is-on b{color:var(--aqua)}
+  .pip{width:7px;height:7px;border-radius:50%;background:#44575e;transition:.25s}
+  .chip.is-on .pip{background:var(--aqua);box-shadow:0 0 8px var(--aqua)}
+  .hint{font-size:9.5px;letter-spacing:.26em;color:var(--muted);opacity:.85}
+
+  .corner{position:fixed;z-index:6;width:22px;height:22px;pointer-events:none;
+    border:0 solid rgba(255,180,94,.5);opacity:0;transition:opacity 1.2s ease .4s}
+  body.ready .corner{opacity:1}
+  .c-tl{top:10px;left:10px;border-top-width:1px;border-left-width:1px}
+  .c-tr{top:10px;right:10px;border-top-width:1px;border-right-width:1px}
+  .c-bl{bottom:10px;left:10px;border-bottom-width:1px;border-left-width:1px}
+  .c-br{bottom:10px;right:10px;border-bottom-width:1px;border-right-width:1px}
+
+  /* ---------- boot veil ---------- */
+  #veil{position:fixed;inset:0;z-index:20;display:grid;place-items:center;
+    background:#050d14;
+    transition:opacity .7s ease .15s,visibility 0s linear .95s}
+  #veil.hide{opacity:0;visibility:hidden}
+  .veil-line{font-size:11.5px;letter-spacing:.42em;color:var(--muted)}
+  .veil-line .cursor{font-style:normal;color:var(--amber);
+    animation:blink 1s steps(2) infinite}
+  @keyframes blink{50%{opacity:0}}
+
+  @media (max-width:820px){.hud-tr{display:none}}
+  @media (max-width:560px){
+    .tele:nth-child(3){display:none}
+    .hint{display:none}
+    .spec{max-width:30ch}
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{animation:none !important;transition:none !important}
+    .hud,.corner{opacity:1;transform:none}
+  }
+</style>
+</head>
+<body>
+
+<div id="stage"></div>
+<div class="scanlines"></div>
+<div class="vignette"></div>
+
+<header class="hud hud-tl">
+  <p class="eyebrow"><span class="dot"></span>FIELD OBSERVATORY · LIVE RENDER</p>
+  <h1>TORUS<br><span class="hollow">KNOT</span></h1>
+  <p class="spec">p<b>3</b> · q<b>4</b> parametric surface — morphing along its own normals
+     · <b id="verts">—</b> vertices · three orbiting lamps</p>
+</header>
+
+<aside class="hud hud-tr">
+  <p class="legend-title">LIGHTING RIG</p>
+  <ul class="legend">
+    <li>α — amber orbiter <i class="sw sw-a"></i></li>
+    <li>β — cyan orbiter <i class="sw sw-b"></i></li>
+    <li>core — ember heart <i class="sw sw-c"></i></li>
+    <li>dust field — 1,300 motes <i class="sw sw-d"></i></li>
+  </ul>
+  <p class="credit">THREE.JS r160 · WEBGL</p>
+</aside>
+
+<footer class="hud hud-bl">
+  <div class="tele"><span class="lab">FPS</span><span class="val" id="fps">—</span></div>
+  <div class="tele"><span class="lab">CAM</span><span class="val" id="dist">—</span></div>
+  <div class="tele"><span class="lab">AZ</span><span class="val" id="az">—</span></div>
+  <div class="tele"><span class="lab">T+</span><span class="val" id="clock">00:00</span></div>
+</footer>
+
+<nav class="hud hud-br">
+  <div class="btns">
+    <button id="btnOrbit" class="chip is-on" aria-pressed="true">
+      <i class="pip"></i>AUTO-ORBIT <b id="orbitState">ON</b></button>
+    <button id="btnPulse" class="chip">◉ PULSE</button>
+  </div>
+  <p class="hint">DRAG — ROTATE · SCROLL — ZOOM · CLICK — PULSE</p>
+</nav>
+
+<span class="corner c-tl"></span><span class="corner c-tr"></span>
+<span class="corner c-bl"></span><span class="corner c-br"></span>
+
+<div id="veil"><p class="veil-line">CALIBRATING ORBIT<em class="cursor"> ▍</em></p></div>
+
+<noscript><p style="position:fixed;inset:0;display:grid;place-items:center">JavaScript is required.</p></noscript>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const veil  = document.getElementById('veil');
+const $ = id => document.getElementById(id);
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* UI refs — declared early because syncOrbitChip() runs during setup */
+const btnOrbit = $('btnOrbit');
+const btnPulse = $('btnPulse');
+
+/* ---------- renderer / scene / camera ---------- */
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true, powerPreference:'high-performance' });
+} catch(e) {
+  veil.querySelector('.veil-line').textContent = 'WEBGL UNAVAILABLE ON THIS DEVICE';
+  throw e;
+}
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.12;
+$('stage').appendChild(renderer.domElement);
+renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x051019, 0.02);
+
+const camera = new THREE.PerspectiveCamera(42, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(3.2, 1.7, 6.3);
+
+/* studio reflections for the metal */
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+pmrem.dispose();
+
+/* ---------- controls ---------- */
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;  controls.dampingFactor = 0.05;
+controls.enablePan = false;
+controls.minDistance = 3.4;     controls.maxDistance = 15;
+controls.autoRotateSpeed = 0.9;
+let orbitOn = !reduced;
+controls.autoRotate = orbitOn;
+syncOrbitChip();
+
+let idleTimer;
+controls.addEventListener('start', () => {
+  controls.autoRotate = false;
+  clearTimeout(idleTimer);
+  document.body.classList.add('grabbing');
+});
+controls.addEventListener('end', () => {
+  document.body.classList.remove('grabbing');
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => { if (orbitOn) controls.autoRotate = true; }, 2600);
+});
+
+/* ---------- shared time + morph injection ---------- */
+const uTime = { value: 0 };
+function wobble(mat, amp){
+  mat.onBeforeCompile = shader => {
+    shader.uniforms.uTime = uTime;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float uTime;')
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        float wv = sin(position.x * 2.3 + uTime * 1.1)
+                 * sin(position.y * 3.1 + uTime * 0.8)
+                 * sin(position.z * 2.6 + uTime * 1.4);
+        transformed += normal * wv * ${amp.toFixed(3)};`);
+  };
+}
+
+/* ---------- the knot ---------- */
+const pivot = new THREE.Group();      scene.add(pivot);
+const knotGroup = new THREE.Group();  pivot.add(knotGroup);
+
+const knotGeo = new THREE.TorusKnotGeometry(1.12, 0.36, 340, 60, 3, 4);
+$('verts').textContent = knotGeo.attributes.position.count.toLocaleString('en-US');
+
+const knotMat = new THREE.MeshPhysicalMaterial({
+  color: 0x8fa8b8, metalness: 1.0, roughness: 0.24,
+  clearcoat: 0.8, clearcoatRoughness: 0.25,
+  iridescence: 0.85, iridescenceIOR: 1.7,
+  envMapIntensity: 0.9,
+  emissive: new THREE.Color(0xff9a3c), emissiveIntensity: 0
+});
+wobble(knotMat, 0.06);
+knotGroup.add(new THREE.Mesh(knotGeo, knotMat));
+
+/* sparkle skin riding the same morph */
+const sparkMat = new THREE.PointsMaterial({
+  color: 0xffc98a, size: 0.02, transparent: true, opacity: 0.45,
+  blending: THREE.AdditiveBlending, depthWrite: false, fog: false
+});
+wobble(sparkMat, 0.06);
+const sparks = new THREE.Points(knotGeo, sparkMat);
+sparks.scale.setScalar(1.015);
+sparks.renderOrder = 1;
+knotGroup.add(sparks);
+
+/* ---------- ember core ---------- */
+function makeGlowTexture(){
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const grd = g.createRadialGradient(64,64,0, 64,64,64);
+  grd.addColorStop(0,  'rgba(255,255,255,1)');
+  grd.addColorStop(.25,'rgba(255,255,255,.55)');
+  grd.addColorStop(1,  'rgba(255,255,255,0)');
+  g.fillStyle = grd; g.fillRect(0,0,128,128);
+  return new THREE.CanvasTexture(c);
+}
+const glowTex = makeGlowTexture();
+
+const core = new THREE.Mesh(
+  new THREE.IcosahedronGeometry(0.26, 3),
+  new THREE.MeshBasicMaterial({ color: 0xffc488 })
+);
+pivot.add(core);
+const coreLight = new THREE.PointLight(0xff8a3c, 26, 9, 2);
+pivot.add(coreLight);
+const coreGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+  map: glowTex, color: 0xff9a4a, transparent: true, opacity: .85,
+  blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+coreGlow.scale.setScalar(2.1);
+pivot.add(coreGlow);
+
+/* ---------- ambient + orbital lamp rigs ---------- */
+scene.add(new THREE.AmbientLight(0x35505c, 0.6));
+
+function makeRig(radius, tilt, railColor, lampColor, intensity, spriteSize){
+  const g = new THREE.Group(); g.rotation.copy(tilt);
+  const rail = new THREE.Mesh(
+    new THREE.TorusGeometry(radius, 0.006, 6, 180),
+    new THREE.MeshBasicMaterial({ color: railColor, transparent:true, opacity:.32,
+      blending:THREE.AdditiveBlending, depthWrite:false, fog:false }));
+  rail.rotation.x = Math.PI/2;
+  const light = new THREE.PointLight(lampColor, intensity, 0, 2);
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: glowTex, color: lampColor, transparent:true, opacity:.95,
+    blending:THREE.AdditiveBlending, depthWrite:false, fog:false }));
+  spr.scale.setScalar(spriteSize);
+  g.add(rail, light, spr);
+  pivot.add(g);
+  return { light, spr, radius, spriteSize };
+}
+const rigA = makeRig(3.6,  new THREE.Euler( 0.5, 0,  0.18), 0x7a4c1e, 0xffa14e, 95, 1.5);
+const rigB = makeRig(3.15, new THREE.Euler(-0.6, 0, -0.32), 0x1e5c5c, 0x53dcff, 75, 1.25);
+
+/* ---------- dust field ---------- */
+const DUST_N = 1300;
+const pos = new Float32Array(DUST_N*3);
+const aScale = new Float32Array(DUST_N);
+const aPhase = new Float32Array(DUST_N);
+const aMix   = new Float32Array(DUST_N);
+const v = new THREE.Vector3();
+for (let i = 0; i < DUST_N; i++){
+  v.randomDirection().multiplyScalar(5.5 + Math.pow(Math.random(), .7) * 10.5);
+  v.y *= 0.8;
+  pos.set([v.x, v.y, v.z], i*3);
+  aScale[i] = 0.6 + Math.random()*1.8;
+  aPhase[i] = Math.random()*Math.PI*2;
+  aMix[i]   = Math.random();
+}
+const dustGeo = new THREE.BufferGeometry();
+dustGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+dustGeo.setAttribute('aScale',   new THREE.BufferAttribute(aScale, 1));
+dustGeo.setAttribute('aPhase',   new THREE.BufferAttribute(aPhase, 1));
+dustGeo.setAttribute('aMix',     new THREE.BufferAttribute(aMix, 1));
+
+const dustUniforms = {
+  uTime,
+  uPixelRatio: { value: renderer.getPixelRatio() },
+  uColA: { value: new THREE.Color(1.0, 0.72, 0.42) },   // amber
+  uColB: { value: new THREE.Color(0.42, 0.9, 0.85) }    // aqua
+};
+const dust = new THREE.Points(dustGeo, new THREE.ShaderMaterial({
+  uniforms: dustUniforms,
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  vertexShader: `
+    attribute float aScale; attribute float aPhase; attribute float aMix;
+    uniform float uTime; uniform float uPixelRatio;
+    varying float vTw; varying float vMix;
+    void main(){
+      vec3 p = position;
+      p.x += sin(uTime*0.11 + aPhase)      * 0.4;
+      p.y += cos(uTime*0.09 + aPhase*1.7)  * 0.35;
+      p.z += sin(uTime*0.07 + aPhase*0.6)  * 0.4;
+      vec4 mv = modelViewMatrix * vec4(p, 1.0);
+      float tw = 0.5 + 0.5*sin(uTime*(0.5 + fract(aPhase)*0.8) + aPhase*6.2831);
+      vTw = tw; vMix = aMix;
+      gl_PointSize = uPixelRatio * aScale * (9.5 / -mv.z) * (0.7 + 0.6*tw);
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `
+    uniform vec3 uColA; uniform vec3 uColB;
+    varying float vTw; varying float vMix;
+    void main(){
+      float d = length(gl_PointCoord - 0.5);
+      float a = smoothstep(0.5, 0.0, d); a *= a;
+      vec3 col = mix(uColA, uColB, vMix);
+      gl_FragColor = vec4(col * (0.55 + 0.65*vTw), a * (0.28 + 0.5*vTw));
+    }`
+}));
+scene.add(dust);
+
+/* ---------- pulse ring ---------- */
+const ring = new THREE.Mesh(
+  new THREE.RingGeometry(0.97, 1, 72),
+  new THREE.MeshBasicMaterial({ color: 0xffb45e, transparent:true, opacity:0,
+    side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite:false, fog:false }));
+ring.visible = false;
+scene.add(ring);
+
+let pulse = 0, ringT = 1e9;
+function firePulse(){
+  pulse = 1; ringT = 0; ring.visible = true;
+}
+
+/* ---------- pointer / tap / keys ---------- */
+const pointer = new THREE.Vector2();
+addEventListener('pointermove', e => {
+  pointer.x =  (e.clientX / innerWidth)  * 2 - 1;
+  pointer.y =  (e.clientY / innerHeight) * 2 - 1;
+});
+let dX = 0, dY = 0, dT = 0;
+renderer.domElement.addEventListener('pointerdown', e => { dX = e.clientX; dY = e.clientY; dT = performance.now(); });
+renderer.domElement.addEventListener('pointerup', e => {
+  if (Math.hypot(e.clientX - dX, e.clientY - dY) < 6 && performance.now() - dT < 350) firePulse();
+});
+addEventListener('keydown', e => {
+  if (e.code === 'Space'){ e.preventDefault(); firePulse(); }
+  if (e.key === 'o' || e.key === 'O') toggleOrbit();
+});
+
+/* ---------- buttons ---------- */
+function syncOrbitChip(){
+  btnOrbit.classList.toggle('is-on', orbitOn);
+  btnOrbit.setAttribute('aria-pressed', orbitOn);
+  $('orbitState').textContent = orbitOn ? 'ON' : 'OFF';
+}
+function toggleOrbit(){
+  orbitOn = !orbitOn;
+  controls.autoRotate = orbitOn;
+  clearTimeout(idleTimer);
+  syncOrbitChip();
+}
+btnOrbit.addEventListener('click', toggleOrbit);
+btnPulse.addEventListener('click', firePulse);
+
+/* ---------- resize ---------- */
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  dustUniforms.uPixelRatio.value = renderer.getPixelRatio();
+});
+
+/* ---------- loop ---------- */
+const clock = new THREE.Clock();
+let elapsed = 0, fpsEMA = 60, teleAcc = 0, booted = false;
+const fpsEl = $('fps'), distEl = $('dist'), azEl = $('az'), clockEl = $('clock');
+
+function tick(){
+  requestAnimationFrame(tick);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  elapsed += dt;
+  uTime.value = elapsed;
+
+  /* knot motion */
+  knotGroup.rotation.y += dt * 0.22;
+  knotGroup.rotation.x  = Math.sin(elapsed * 0.16) * 0.28;
+
+  /* pulse decay + feedback */
+  pulse = Math.max(0, pulse - dt * 1.8);
+  knotGroup.scale.setScalar(1 + pulse * 0.06);
+  knotMat.emissiveIntensity = pulse * 1.5;
+  coreLight.intensity = 26 + Math.sin(elapsed * 3.1) * 4 + pulse * 90;
+  core.scale.setScalar(1 + Math.sin(elapsed * 2.2) * 0.08 + pulse * 0.25);
+
+  if (ringT < 1){
+    ringT += dt / 0.9;
+    ring.scale.setScalar(0.8 + ringT * 5.5);
+    ring.material.opacity = 0.5 * Math.max(0, 1 - ringT);
+    ring.quaternion.copy(camera.quaternion);
+  } else ring.visible = false;
+
+  /* lamps on their rails */
+  const aA = elapsed * 0.55, aB = -elapsed * 0.42 + 2.0;
+  rigA.light.position.set(Math.cos(aA)*rigA.radius, 0, Math.sin(aA)*rigA.radius);
+  rigA.spr.position.copy(rigA.light.position);
+  rigB.light.position.set(Math.cos(aB)*rigB.radius, 0, Math.sin(aB)*rigB.radius);
+  rigB.spr.position.copy(rigB.light.position);
+  rigA.spr.scale.setScalar(rigA.spriteSize * (1 + 0.1*Math.sin(elapsed*2.3)));
+  rigB.spr.scale.setScalar(rigB.spriteSize * (1 + 0.1*Math.sin(elapsed*1.7 + 2)));
+
+  /* dust drift */
+  dust.rotation.y += dt * 0.015;
+  dust.rotation.x  = Math.sin(elapsed * 0.05) * 0.03;
+
+  /* gentle pointer parallax on the whole assembly */
+  pivot.rotation.x += (pointer.y *  0.05 - pivot.rotation.x) * 0.04;
+  pivot.rotation.z += (pointer.x * -0.04 - pivot.rotation.z) * 0.04;
+
+  controls.update();
+  renderer.render(scene, camera);
+
+  /* telemetry */
+  fpsEMA += (1/Math.max(dt, 1e-4) - fpsEMA) * 0.08;
+  teleAcc += dt;
+  if (teleAcc > 0.25){
+    teleAcc = 0;
+    fpsEl.textContent = fpsEMA.toFixed(0);
+    fpsEl.classList.toggle('low', fpsEMA < 48);
+    distEl.textContent = controls.getDistance().toFixed(1);
+    const deg = ((THREE.MathUtils.radToDeg(controls.getAzimuthalAngle()) % 360) + 360) % 360;
+    azEl.textContent = String(Math.round(deg)).padStart(3,'0') + '°';
+    const m = Math.floor(elapsed/60), s = Math.floor(elapsed%60);
+    clockEl.textContent = String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+  }
+
+  if (!booted){
+    booted = true;
+    document.body.classList.add('ready');
+    veil.classList.add('hide');
+  }
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
